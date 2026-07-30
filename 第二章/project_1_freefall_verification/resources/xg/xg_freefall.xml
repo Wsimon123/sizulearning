@@ -38,7 +38,7 @@
           <geom type="capsule" size="0.025" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.2 0.2 0.5"/>
           <body name="FAR_KNEE_LINK" pos="0 0 -0.2">
             <inertial pos="0.0076906034 0 -0.091770469" quat="0.706927 0.0150821 0.0150981 0.706964" mass="0.20733416" diaginertia="0.0015906767 0.0016230863 0.000049932184"/>
-            <joint name="FAR_KNEE_JOINT" pos="0 0 0" axis="0 1 0" range="-2.723 -0.602"/>
+            <joint name="FAR_KNEE_JOINT" pos="0 0 0" axis="0 1 0" range="-2.723 0.602"/>
             <geom type="capsule" size="0.02" fromto="0 0 0 0 0 -0.21366" rgba="0.8 0.2 0.2 0.5"/>
             <body name="FAR_FOOT_LINK" pos="0 0 -0.21366">
               <inertial pos="0 0 0" mass="0.01" diaginertia="0.00001 0.00001 0.00001"/>
@@ -59,7 +59,7 @@
           <geom type="capsule" size="0.025" fromto="0 0 0 0 0 -0.2" rgba="0.2 0.8 0.2 0.5"/>
           <body name="FBL_KNEE_LINK" pos="0 0 -0.2">
             <inertial pos="0.0076906034 0 -0.091770469" quat="0.706959 0.0150884 0.0150689 0.706933" mass="0.20733416" diaginertia="0.0015906767 0.0016230863 0.000049932184"/>
-            <joint name="FBL_KNEE_JOINT" pos="0 0 0" axis="0 1 0" range="-2.723 -0.602"/>
+            <joint name="FBL_KNEE_JOINT" pos="0 0 0" axis="0 1 0" range="-2.723 0.602"/>
             <geom type="capsule" size="0.02" fromto="0 0 0 0 0 -0.21366" rgba="0.2 0.8 0.2 0.5"/>
             <body name="FBL_FOOT_LINK" pos="0 0 -0.21366">
               <inertial pos="0 0 0" mass="0.01" diaginertia="0.00001 0.00001 0.00001"/>
@@ -80,7 +80,7 @@
           <geom type="capsule" size="0.025" fromto="0 0 0 0 0 -0.2" rgba="0.2 0.2 0.8 0.5"/>
           <body name="RAR_KNEE_LINK" pos="0 0 -0.2">
             <inertial pos="0.0076906034 0 -0.091770469" quat="0.706927 0.0150821 0.0150981 0.706964" mass="0.20733416" diaginertia="0.0015906767 0.0016230863 0.000049932184"/>
-            <joint name="RAR_KNEE_JOINT" pos="0 0 0" axis="0 1 0" range="-2.723 -0.602"/>
+            <joint name="RAR_KNEE_JOINT" pos="0 0 0" axis="0 1 0" range="-2.723 0.602"/>
             <geom type="capsule" size="0.02" fromto="0 0 0 0 0 -0.21366" rgba="0.2 0.2 0.8 0.5"/>
             <body name="RAR_FOOT_LINK" pos="0 0 -0.21366">
               <inertial pos="0 0 0" mass="0.01" diaginertia="0.00001 0.00001 0.00001"/>
@@ -101,7 +101,7 @@
           <geom type="capsule" size="0.025" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.8 0.2 0.5"/>
           <body name="RBL_KNEE_LINK" pos="0 0 -0.2">
             <inertial pos="0.0076906034 0 -0.091770469" quat="0.706959 0.0150882 0.0150688 0.706933" mass="0.20733416" diaginertia="0.0015906767 0.0016230863 0.000049932184"/>
-            <joint name="RBL_KNEE_JOINT" pos="0 0 0" axis="0 1 0" range="-2.723 -0.602"/>
+            <joint name="RBL_KNEE_JOINT" pos="0 0 0" axis="0 1 0" range="-2.723 0.602"/>
             <geom type="capsule" size="0.02" fromto="0 0 0 0 0 -0.21366" rgba="0.8 0.8 0.2 0.5"/>
             <body name="RBL_FOOT_LINK" pos="0 0 -0.21366">
               <inertial pos="0 0 0" mass="0.01" diaginertia="0.00001 0.00001 0.00001"/>
