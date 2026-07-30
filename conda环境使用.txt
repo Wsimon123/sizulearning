@@ -1,0 +1,7 @@
+确认环境 conda info --envs
+conda activate freefall 进入freefall环境
+# 回到 base 环境
+conda deactivate
+
+# 或者直接退出 conda，回到系统 Python
+conda deactivate  # 执行两次

@@ -27,13 +27,22 @@ print("Step 1: 加载 MJCF 模型")
 print("=" * 60)
 
 model_path = os.path.join(SCRIPT_DIR, "resources", "xg", "xg_freefall.xml")
-model = mujoco.MjModel.from_xml_path(model_path)
+with open(model_path, "r", encoding="utf-8") as f:
+    model_xml = f.read()
+model = mujoco.MjModel.from_xml_string(model_xml)
 data = mujoco.MjData(model)
+
+
+# model = 汽车设计图纸          ← 不变：轴距、重量、发动机参数
+# data  = 汽车仪表盘            ← 实时变化：车速、油量、转速
 
 print(f"模型文件: {model_path}")
 print(f"广义坐标维度 (nq): {model.nq}")
 print(f"自由度 (nv):        {model.nv}")
 print(f"刚体数 (nbody):     {model.nbody}")
+
+# 1 个躯干 + 4 条腿 × 4 段连杆 = 17 个显式 body
+# MuJoCo 自动加 1 个 world body → nbody = 18
 print(f"关节数 (njnt):      {model.njnt}")
 print(f"执行器数 (nu):      {model.nu}")
 print(f"仿真步长:           {model.opt.timestep} s")
@@ -64,9 +73,42 @@ data.qpos[:] = q0
 data.qvel[:] = 0
 mujoco.mj_forward(model, data)
 
+
+# mujoco.mj_forward(model, data)  # 用当前状态跑一遍正运动学 → 更新所有派生量
+# data.ctrl[:] = 0           # 写入：电机力矩清零（自由落体）
+# mujoco.mj_step(model, data)     # 前进一步 → qpos/qvel 被积分器更新
+
+# qpos 的顺序由 XML 中关节出现的顺序决定，按运动学树深度优先遍历。对照 xg_freefall.xml 具体如下：
+
+
+# qpos 索引   内容                           XML 来源
+# ───────────────────────────────────────────────────────────────
+# 0          基座 x 位置                    
+# 1          基座 y 位置                    自由基座的标配（固定格式）
+# 2          基座 z 位置                    7 个槽位：3 平移 + 4 四元数
+# 3          基座朝向 w (四元数实部)
+# 4          基座朝向 x
+# 5          基座朝向 y
+# 6          基座朝向 z
+# ───────────────────────────────────────────────────────────────
+# 7          FAR_ABAD_JOINT    (前右·髋侧摆)   torso → FAR_ABAD_LINK
+# 8          FAR_HIP_JOINT     (前右·大腿)     FAR_ABAD → FAR_HIP
+# 9          FAR_KNEE_JOINT    (前右·膝关节)   FAR_HIP  → FAR_KNEE
+# ───────────────────────────────────────────────────────────────
+# 10         FBL_ABAD_JOINT    (前左·髋侧摆)   torso → FBL_ABAD_LINK
+# 11         FBL_HIP_JOINT     (前左·大腿)
+# 12         FBL_KNEE_JOINT    (前左·膝关节)
+# ───────────────────────────────────────────────────────────────
+# 13         RAR_ABAD_JOINT    (后右·髋侧摆)   torso → RAR_ABAD_LINK
+# 14         RAR_HIP_JOINT     (后右·大腿)
+# 15         RAR_KNEE_JOINT    (后右·膝关节)
+# ───────────────────────────────────────────────────────────────
+# 16         RBL_ABAD_JOINT    (后左·髋侧摆)   torso → RBL_ABAD_LINK
+# 17         RBL_HIP_JOINT     (后左·大腿)
+# 18         RBL_KNEE_JOINT    (后左·膝关节)
 # 2.2 计算广义质量矩阵 M(q0)
 M = np.zeros((model.nv, model.nv))
-mujoco.mj_fullM(model, M, data.qM)
+mujoco.mj_fullM(model, data, M)
 
 print(f"\n--- 质量矩阵 M(q0) ---")
 print(f"形状: {M.shape}")
@@ -159,6 +201,14 @@ print(f"  平均 a_x = {ax_mean:+.6f} m/s^2 (期望: 0)")
 print(f"  平均 a_y = {ay_mean:+.6f} m/s^2 (期望: 0)")
 print(f"  平均 a_z = {az_mean:+.6f} m/s^2 (期望: -9.81)")
 
+print(f"\n  acc_central[:, 2] 前10个值:")
+for i in range(min(10, len(acc_central))):
+    print(f"    [{i:3d}] {acc_central[i, 2]:+.8f} m/s^2")
+print(f"  ...")
+print(f"  acc_central[:, 2] 后10个值:")
+for i in range(max(0, len(acc_central) - 10), len(acc_central)):
+    print(f"    [{i:3d}] {acc_central[i, 2]:+.8f} m/s^2")
+
 rel_err_z = abs(az_mean - (-9.81)) / 9.81 * 100
 print(f"\n  z方向相对误差: {rel_err_z:.4f}%")
 print(f"  是否满足 < 1%: {'PASS' if rel_err_z < 1 else 'FAIL'}")
@@ -204,9 +254,21 @@ ax.legend()
 ax.grid(True, alpha=0.3)
 
 ax = axes[1, 0]
+
+# 时间轴转换 (ms)
 t_acc_ms = time_log[1:-1] * 1000
+
+# 绘制仿真数据 (蓝色实线)
 ax.plot(t_acc_ms, acc_central[:, 2], "b-", lw=2, label="Simulation")
+
+# 绘制理论参考线 (红色虚线)
 ax.axhline(y=-9.81, color="r", ls="--", lw=1.5, label="Theory: -g")
+
+# 【关键修复】强制设置Y轴范围
+# 既然数据全是 -9.81，手动指定一个包含该值的合理区间
+# 避免 Matplotlib 因浮点误差将范围缩放到 1e-11
+ax.set_ylim(-10.5, -9.0) 
+
 ax.set_xlabel("Time (ms)")
 ax.set_ylabel("z acceleration (m/s^2)")
 ax.set_title("(c) Base z-acceleration")
@@ -242,8 +304,10 @@ try:
     if "MUJOCO_GL" not in os.environ:
         os.environ["MUJOCO_GL"] = "egl"
 
-    vis_model_path = os.path.join(SCRIPT_DIR, "resources", "xg", "xg_converted.xml")
-    vis_model = mujoco.MjModel.from_xml_path(vis_model_path)
+    vis_model_path = os.path.join(SCRIPT_DIR, "resources", "xg", "xg_freefall.xml")
+    with open(vis_model_path, "r", encoding="utf-8") as f:
+        vis_model_xml = f.read()
+    vis_model = mujoco.MjModel.from_xml_string(vis_model_xml)
     vis_model.vis.global_.offwidth = 800
     vis_model.vis.global_.offheight = 600
 
