@@ -14,8 +14,14 @@
   </option>
 
   <default>
+    <!--geom friction 关节摩擦系数-->
+    <!-- friction:滑动，扭动，滚动摩擦系数-->
+    <!-- solref约束刚度与阻尼-->
+    <!-- solimp="0.9 0.92 0.015" — 约束软化-->
+    <!--这行配置的意思是：所有几何体默认有真实的滑动摩擦，接触求解用偏硬的约束 + 轻微过阻尼，允许极小的穿透来避免数值震荡。 脚本里只有足尖 geom 真正启用碰撞（contype=1），其余连杆都显式关了，所以这些摩擦参数实际只作用在四只脚上。-->
     <geom condim="3" friction="0.8 0.005 0.0001" solref="0.035 1.1" solimp="0.9 0.92 0.015"/>
-    <joint damping="0" frictionloss="0" armature="0.01"/>
+    <joint damping="0" frictionloss="0" armature="0.01"/> <!--关节默认阻尼比，摩擦系数，转动惯量，如果你只想让某个关节单独设置，可以给那个 <joint> 自己加 armature="xxx"，就会覆盖默认值。-->
+    
   </default>
 
   <worldbody>

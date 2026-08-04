@@ -8,6 +8,7 @@
 import os
 import numpy as np
 import mujoco
+import imageio
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 N_ACTUATOR = 12
@@ -47,15 +48,23 @@ def inject_true_params(model, level="standard"):
     """将真值参数注入模型。"""
     for i in range(N_ACTUATOR):
         dof_id = DOF_OFFSET + i
-        model.dof_damping[dof_id] = B_STAR[i]
-        model.dof_frictionloss[dof_id] = FC_STAR[i]
+        model.dof_damping[dof_id] = B_STAR[i] #阻尼系数注入
+        model.dof_frictionloss[dof_id] = FC_STAR[i] #摩擦系数注入
         if level == "advanced":
-            model.dof_armature[dof_id] = IR_STAR[i]
+            model.dof_armature[dof_id] = IR_STAR[i] #转动惯量注入
 
 
-def run_trajectory(model, data, ctrl_fn, duration_s=5.0):
+def run_trajectory(model, data, ctrl_fn, duration_s=5.0,
+                   renderer=None, video_writer=None, video_fps=30,
+                   camera=None):
     """
-    运行仿真并记录完整数据。
+    运行仿真并记录完整数据。可选：同时渲染并录制视频。
+
+    参数:
+        renderer:     mujoco.Renderer 实例（传入则录制视频）
+        video_writer: imageio writer 实例
+        video_fps:    输出视频帧率
+        camera:       mujoco.MjvCamera 实例（控制视角）
 
     返回:
         q_log:   (T, nq)  广义坐标
@@ -67,12 +76,19 @@ def run_trajectory(model, data, ctrl_fn, duration_s=5.0):
     q_log = np.zeros((n_steps, model.nq))
     dq_log = np.zeros((n_steps, model.nv))
 
+    render_every = max(1, int(1.0 / (dt * video_fps))) if renderer else 1
+
     for step in range(n_steps):
         t = step * dt
         data.ctrl[:] = ctrl_fn(t, data)
-        mujoco.mj_step(model, data)
-        q_log[step] = data.qpos.copy()
-        dq_log[step] = data.qvel.copy()
+        mujoco.mj_step(model, data)#前进一步
+        q_log[step] = data.qpos.copy()#记录位置
+        dq_log[step] = data.qvel.copy()#记录速度
+
+        # 每隔 N 个物理步渲染一帧
+        if renderer and video_writer and step % render_every == 0:
+            renderer.update_scene(data, camera=camera)
+            video_writer.append_data(renderer.render())
 
     return q_log, dq_log
 
@@ -80,7 +96,7 @@ def run_trajectory(model, data, ctrl_fn, duration_s=5.0):
 def make_chirp_ctrl(amplitudes, phases, f_start, f_end, duration_s):
     """生成 chirp 激励控制函数。"""
     def ctrl_fn(t, data):
-        freq = f_start + (f_end - f_start) * t / duration_s
+        freq = f_start + (f_end - f_start) * t / duration_s #此刻的频率
         ctrl = np.zeros(N_ACTUATOR)
         for j in range(N_ACTUATOR):
             ctrl[j] = amplitudes[j] * np.sin(2 * np.pi * freq * t + phases[j])
@@ -88,7 +104,7 @@ def make_chirp_ctrl(amplitudes, phases, f_start, f_end, duration_s):
     return ctrl_fn
 
 
-def make_trot_ctrl(default_angles, kp=20.0, kd=0.5, trot_freq=2.0,
+def make_trot_ctrl(default_angles, kp=60.0, kd=3.0, trot_freq=2.0,
                    amp_hip=0.3, amp_knee=0.5):
     """生成 trot 步态 PD 控制函数。"""
     def ctrl_fn(t, data):
@@ -106,7 +122,7 @@ def make_trot_ctrl(default_angles, kp=20.0, kd=0.5, trot_freq=2.0,
 
         dof_pos = data.qpos[7:19]
         dof_vel = data.qvel[DOF_OFFSET:DOF_OFFSET + N_ACTUATOR]
-        return kp * (target - dof_pos) - kd * dof_vel
+        return kp * (target - dof_pos) - kd * dof_vel#基于速度和位置，输出控制力矩
     return ctrl_fn
 
 
@@ -136,6 +152,20 @@ def init_standing(model, data):
     data.qpos[:] = q0
     data.qvel[:] = 0
     mujoco.mj_forward(model, data)
+    # 只做前向计算，不推进仿真时间。具体执行：
+
+    # 前向运动学（根据 qpos 算出各身体的世界坐标 xpos、xmat 等）
+    # 前向动力学（根据力/控制信号算出加速度 qacc）
+    # 更新传感器数据、接触力等导出量
+
+
+def load_model_from_path(xml_path):
+    """绕过中文路径问题：先用 Python 读取 XML 字符串，再交给 MuJoCo 解析。"""
+    import io
+    # 使用 open() 读取原始字节，再用 io.StringIO 解码为字符串
+    with open(xml_path, "r", encoding="utf-8") as f:
+        xml_str = f.read()
+    return mujoco.MjModel.from_xml_string(xml_str)
 
 
 def main():
@@ -144,7 +174,7 @@ def main():
     print("=" * 60)
 
     model_path = os.path.join(SCRIPT_DIR, "resources", "xg", "xg_friction_id.xml")
-    model = mujoco.MjModel.from_xml_path(model_path)
+    model = load_model_from_path(model_path)
     data = mujoco.MjData(model)
     dt = model.opt.timestep
 
@@ -154,8 +184,8 @@ def main():
 
     default_angles = np.array([0.0, 0.8, -1.5] * 4)
 
-    rng = np.random.RandomState(42)
-    chirp_amps = rng.uniform(2.0, 5.0, size=N_ACTUATOR)
+    rng = np.random.RandomState(42)#随机数种子
+    chirp_amps = rng.uniform(0.5, 1.5, size=N_ACTUATOR)#从0.5 到 1.5生成12个随机数数组
     chirp_phases = rng.uniform(0, 2 * np.pi, size=N_ACTUATOR)
 
     for level in ["basic", "standard", "advanced"]:
@@ -163,22 +193,52 @@ def main():
         print(f"生成 [{level}] 级别数据...")
         print(f"{'='*60}")
 
-        model_lvl = mujoco.MjModel.from_xml_path(model_path)
+        model_lvl = load_model_from_path(model_path)#加载模型路径
         inject_true_params(model_lvl, level=level if level == "advanced" else "standard")
 
+        # 离屏渲染器（用于录制视频）
+        renderer = mujoco.Renderer(model_lvl, 480, 640)
+
+        # 摄像机：贴近机器人，侧前方俯视角度
+        cam = mujoco.MjvCamera()
+        cam.lookat = [0, 0, 0.25]   # 注视机器人中心高度
+        cam.distance = 2.0           # 距离 2 米
+        cam.elevation = -22          # 俯视角度
+        cam.azimuth = 135            # 水平旋转（侧前方）
+
         # chirp 激励
-        print("  → chirp 激励 (5s)...")
+        print("  → chirp 激励 (5s, 录制视频)...")
         data_c = mujoco.MjData(model_lvl)
+        
+        #mjModel (model_lvl)：存储模型的静态信息——几何形状、关节定义、质量、约束等，一旦加载就不会改变。
+        #mjData (data_c)：存储模型的动态运行时状态——关节位置 (qpos)、速度 (qvel)、加速度 (qacc)、力等，每一步仿真都会更新
+        
         init_standing(model_lvl, data_c)
         chirp_fn = make_chirp_ctrl(chirp_amps, chirp_phases, 0.5, 8.0, 5.0)
-        q_c, dq_c = run_trajectory(model_lvl, data_c, chirp_fn, 5.0)
+        #扫描控制 随机幅值，相位，初始频率，结束频率，时间
+        # 最终生成的是力矩
+        
+        video_path_c = os.path.join(SCRIPT_DIR, f"video_chirp_{level}.mp4")
+        writer_c = imageio.get_writer(video_path_c, fps=30, codec="libx264")
+        q_c, dq_c = run_trajectory(model_lvl, data_c, chirp_fn, 5.0,
+                                   renderer=renderer, video_writer=writer_c,
+                                   camera=cam)
+        writer_c.close()
+        print(f"    视频已保存至: {video_path_c}")
 
         # trot 激励
-        print("  → trot 步态 (5s)...")
+        print("  → trot 步态 (5s, 录制视频)...")
         data_t = mujoco.MjData(model_lvl)
-        init_standing(model_lvl, data_t)
-        trot_fn = make_trot_ctrl(default_angles)
-        q_t, dq_t = run_trajectory(model_lvl, data_t, trot_fn, 5.0)
+        init_standing(model_lvl, data_t)#初始化站立状态
+        trot_fn = make_trot_ctrl(default_angles)#力控输出力(基于目标角度)
+        video_path_t = os.path.join(SCRIPT_DIR, f"video_trot_{level}.mp4")
+        writer_t = imageio.get_writer(video_path_t, fps=30, codec="libx264")
+        q_t, dq_t = run_trajectory(model_lvl, data_t, trot_fn, 5.0,
+                                   renderer=renderer, video_writer=writer_t,
+                                   camera=cam)
+        writer_t.close()
+        renderer.close()
+        print(f"    视频已保存至: {video_path_t}")
 
         # 合并
         dq_all = np.concatenate([dq_c, dq_t])
@@ -242,9 +302,14 @@ def main():
     print(f"\n{'='*60}")
     print("数据生成完成！")
     print(f"{'='*60}")
-    print("  data_basic.npz    → 基础档 (b, 12维)")
-    print("  data_standard.npz → 标准档 (b + f_c, 24维)")
-    print("  data_advanced.npz → 进阶档 (b + f_c + I_r, 36维)")
+    print("  数据文件:")
+    print("    data_basic.npz    → 基础档 (b, 12维)")
+    print("    data_standard.npz → 标准档 (b + f_c, 24维)")
+    print("    data_advanced.npz → 进阶档 (b + f_c + I_r, 36维)")
+    print("  仿真视频:")
+    for lv in ["basic", "standard", "advanced"]:
+        print(f"    video_chirp_{lv}.mp4  → chirp 激励")
+        print(f"    video_trot_{lv}.mp4   → trot 步态")
 
 
 if __name__ == "__main__":
