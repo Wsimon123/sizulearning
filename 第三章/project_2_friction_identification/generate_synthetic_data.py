@@ -268,6 +268,7 @@ def main():
         n_train = int(n_total * 0.8)
         idx = np.random.RandomState(99).permutation(n_total)
         ti, vi = idx[:n_train], idx[n_train:]
+        #ti 和 vi 分别是训练集索引和验证集索引。
 
         out = {
             "dq_joint_train": dq_joint_noisy[ti],
